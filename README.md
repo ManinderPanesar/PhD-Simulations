@@ -3,7 +3,7 @@
 
 This repository contains the example of simulations carried out during my PhD. My thesis entitled _Numerical Simulations on high-intensity laser-plasma interaction_.I was working on laser plasma acclerators thorey and simulations. I was using software VORPAL Version 5.2 (now called VSIM) by Tech-X Corportations, specifically designed to carry out laser plasma accleration simulation.
 
-The algorithm of the simulation was based on Particle-in-cell(PIC) method. The input file to modify the parameters and fucntions to be used while simulations was saved as an extension _.pre_. This pre file is processed by Vorpal to calculate all the values derived from pre file in an .in file that is fetched to Vorpal simulation software. 
+The algorithm of the simulation was based on Particle-in-cell(PIC) method. The input file to modify the parameters and functions to be used while simulations was saved as an extension _.pre_. This pre file is processed by Vorpal to calculate all the values derived from pre file in an .in file that is fetched to Vorpal simulation software. 
 
 Depending on the number of processors used, dimensionality of the problem to be simulated (1D, 2D or 3D) and values of the defined parameters in .pre file, total processing time of simulation varied from few minutes to 1 month. The number and size of the output files generated depend on the parameters defined in the simulation. The output contained the particles' position-momentum, electric/magnetic field and charge density values. 
 
