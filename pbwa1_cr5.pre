@@ -1,0 +1,698 @@
+######################################################################
+#
+# $Rev: 284 $ $Date: 2014-04-24 14:31:48 -0500 (Thu, 24 Apr 2014) $
+#
+# Copyright &copy; 1999-2002, University of Colorado
+# Copyright &copy; 2002-2012, University of Colorado and
+#                             Tech-X Corporation
+# See the VSim license file for conditions of use.
+#
+######################################################################
+
+<XSim lpa>
+  shortDescription = "Laser Plasma Accelerator"
+  description = "A demonstration of VSim for a laser-plasma acceleration problem, using the full PIC algorithm."
+  longDescription = "A demonstration of VSim for a laser-plasma acceleration problem, using the full PIC algorithm. An intense laser pulse propagates up a plasma density ramp into a uniform underdense plasma, creating an electron plasma wave."
+  image="laserPlasmaAccel1.png"
+  thumbnail = "laserPlasmaAccel1Tn.png"
+  analyzers = []
+  canChangeDt = false
+  canChangeNdim = false 
+</XSim>
+
+##########
+#
+# Primary variables (defined in terms of constants)
+#
+##########
+
+# Number of spatial dimensions in simulation
+$ NDIM = 2
+
+# Plasma parameters
+
+# Plasma density in uniform region, (1/m^3) 
+$ DENSITY = 1.0e25
+
+# Longitudinal profile parameters: The left edge of the simulation
+# will be at x = 0, and the laser will be launched from that point.
+
+# Length of the plasma ramp (m)
+$ RAMPLEN = 50.0e-6
+
+# Length of the flat portion of the plasma (m)
+$ FLATLEN = 0.3e-3
+
+# ----------------------------------------------------------------------
+# Laser parameters
+
+# Laser wavelength
+$ WAVELENGTH = 1.0e-6
+
+# Laser pulse length: This is the RMS of the intensity, so that
+# intensity goes as I = I_0 * exp(-x^2 / 2LPUMP^2).  In units of m.
+$ LPUMP = 1.7E-6
+
+# Waist size, corresponding to standard Gaussian form I = I_0 *
+# exp(-2r^2 / W_0^2)
+$ W_0 = 8.2E-6
+
+# Normalized vector potential
+$ A_0 = 1.0
+
+# Algorithm parameters
+$ TIMESTEP_FACTOR = 0.9995
+
+# ----------------------------------------------------------------------
+# Grid parameters
+
+$ N_LAMBDA_X = 20.
+$ N_LAMBDA_T = 4
+
+# ----------------------------------------------------------------------
+# PML parameters
+
+$ NPML = 16
+$ PML_EXP = 4
+$ SIGMA_FAC = 1.0
+
+# ----------------------------------------------------------------------
+# Particles per cell
+
+# 1 dimension
+$ PPCX_1 = 4.
+# 2 dimensions
+$ PPCX_2 = 4.
+$ PPCY_2 = 4.
+# 3 dimensions
+$ PPCX_3 = 1.
+$ PPCY_3 = 1.
+$ PPCZ_3 = 1.
+
+##########
+#
+# Exposed variables
+#
+##########
+
+<XVar NDIM>
+  description = "Number of spatial dimensions in simulation"
+   min = 1
+   max = 2
+</XVar>
+
+<XVar DENSITY>
+  description = "plasma density (1/m^3)"
+</XVar>
+
+<XVar RAMPLEN>
+  description = "Length of the plasma ramp (m)"
+</XVar>
+
+<XVar FLATLEN>
+  description = "Length of the flat portion of the plasma (m)"
+</XVar>
+
+<XVar WAVELENGTH>
+  description = "Laser wavelength"
+</XVar>
+
+<XVar LPUMP>
+  description = "Laser pulse length: RMS intensity width (m)"
+</XVar>
+
+<XVar W_0>
+  description = "Waist radius of Gaussian laser beam (m)"
+</XVar>
+
+<XVar A_0>
+  description = "Normalized laser vector potential"
+</XVar>
+
+<XVar TIMESTEP_FACTOR>
+  description = "The numerical stability limit on time step is multiplied by this factor to compute the actual time step."
+  min = 0.0
+  max = 0.99999
+</XVar>
+
+##########
+#
+# Import values and macros
+#
+##########
+
+$ import mathphys.mac
+
+##########
+#
+# Define variables in lines starting with $ for later use
+#
+##########
+
+$ elecTemp = 50.0 # in eV
+$ VTH_E = sqrt(2.0*ELEMCHARGE*elecTemp/ELECMASS)
+
+
+$ CLASSICAL_E_RADIUS = ELEMCHARGE / (4 * PI * EPSILON0 * ELECMASSEV)
+
+# ----------------------------------------------------------------------
+# Derived plasma parameters
+
+$ K_P = math.sqrt(4 * PI * DENSITY * CLASSICAL_E_RADIUS)
+$ LAMBDA_P = TWOPI / K_P
+$ OMEGA_P = LIGHTSPEED * K_P
+# ----------------------------------------------------------------------
+# Derived laser parameters
+
+$ K_0 = TWOPI / WAVELENGTH
+$ OMEGA = LIGHTSPEED * K_0
+# Pulse length: Full width at half max of intensity (not field)
+$ L_FWHM = LPUMP * math.sqrt(8 * math.log(2.))
+# Translation of transverse spot size
+$ WYPUMP = W_0 * math.sqrt(2.)
+$ WZPUMP = W_0 * math.sqrt(2.)
+# Electric field peak amplitude
+$ E_0 = A_0 * K_0 * ELECMASSEV
+
+# ----------------------------------------------------------------------
+# Plasma longitudinal profile
+
+# STARTRAMP is the start of the plasma both in absolute
+# coordinates and relative to the laser launch surface.
+
+$ STARTRAMP =       10.e-6
+$ STARTFLAT = STARTRAMP + RAMPLEN
+$ ENDFLAT = STARTFLAT + FLATLEN
+$ ENDPLASMA = ENDFLAT + RAMPLEN
+
+# ----------------------------------------------------------------------
+# Laser position parameters
+
+# The full half-witdh of the laser pulse, i.e. the length between the
+# peak and where the truncated envelope reaches 0.
+$ L_HALF = 5 * LPUMP
+# The position of the peak of the laser pulse at the beginning of the
+# simulation (before it enters the global domain)
+$ XSTARTPUMP = -L_HALF
+# Waist position, relative to launch surface at x = 0.  We focus in
+# the middle of the ramp.
+$ WAISTPOS = (STARTRAMP + STARTFLAT) / 2
+
+# ----------------------------------------------------------------------
+# Grid parameters
+
+# Minimum global domain sizes.  Actual sizes are rounded up to the
+# nearest grid point.
+$ LX_MIN = 20.*LAMBDA_P
+$ LY_MIN = 5. * W_0
+$ LZ_MIN = LY_MIN
+
+# Grid spacings
+$ DX = WAVELENGTH / N_LAMBDA_X
+$ DY = WAVELENGTH / N_LAMBDA_T
+$ DZ = DY
+
+# Global grid size
+$ NX = int(math.ceil(LX_MIN / DX))
+$ NY = 2 * int(math.ceil(LY_MIN / (2 * DY)))
+$ NZ = 2 * int(math.ceil(LZ_MIN / (2 * DZ)))
+
+# Add the PML
+$ NY_PML = NPML
+$ NZ_PML = NPML
+
+# Total grid sizes and intermediate indices
+$ NY_BEGIN = NY_PML
+$ NY_END = NY_BEGIN + NY
+$ NY_TOT = NY_END + NY_PML
+$ NZ_BEGIN = NZ_PML
+$ NZ_END = NZ_BEGIN + NZ
+$ NZ_TOT = NZ_END + NZ_PML
+
+# Global domain sizes
+$ LX =     NX * DX
+$ LY_TOT = NY_TOT * DY
+$ LZ_TOT = NZ_TOT * DZ
+
+# Lower coordinate bounds.  The x-coordinate can start at zero, since
+# we'll launch the laser pulse right at the start of the plasma ramp.
+$ XSTART = 0.
+$ YSTART = -0.5 * LY_TOT
+$ ZSTART = -0.5 * LZ_TOT
+
+# Intermediate coordinates
+$ LY_BEGIN = YSTART + NY_BEGIN * DY
+$ LY_END = YSTART + NY_END * DY
+$ LZ_BEGIN = ZSTART + NZ_BEGIN * DZ
+$ LZ_END = ZSTART + NZ_END * DZ
+
+# Additional indices for input block convenience
+
+$ NX1 = NX + 1
+$ NY_TOT1 = NY_TOT + 1
+$ NZ_TOT1 = NZ_TOT + 1
+
+$ NXm1 = NX - 1
+$ NY_TOTm1 = NY_TOT - 1
+$ NZ_TOTm1 = NZ_TOT - 1
+
+# Inverse grid spacings
+
+$ DXI = 1 / DX
+
+$ if NDIM >= 2
+$ DYI = 1 / DY
+$ else
+$ DYI = 0.
+$ endif
+
+$ if NDIM >= 3
+$ DZI = 1 / DZ
+$ else
+$ DZI = 0.
+$ endif
+
+# Courant condition
+
+$ DL = 1 / math.sqrt(DXI*DXI + DYI*DYI + DZI*DZI)
+$ DT = TIMESTEP_FACTOR * DL / LIGHTSPEED
+
+# ----------------------------------------------------------------------
+# Particles per cell
+
+$ if NDIM ==  1
+$ PPCX = PPCX_1
+$ PPCY = 1.
+$ PPCZ = 1.
+$ endif
+
+$ if NDIM == 2
+$ PPCX = PPCX_2
+$ PPCY = PPCY_2
+$ PPCZ = 1.
+$ endif
+
+$ if NDIM == 3
+$ PPCX = PPCX_3
+$ PPCY = PPCY_3
+$ PPCZ = PPCZ_3
+$ endif
+
+$ PPC = PPCX * PPCY * PPCZ
+
+# ----------------------------------------------------------------------
+# Plasma loading parameters
+
+# Keep the particles away from the PML.
+$ MAXRADIUS = 0.95 * LY_END
+$ NOMDENS = DENSITY
+$ XSTART_LOAD = 2.e-5
+$ YSTART_LOAD = max(-MAXRADIUS, LY_BEGIN)
+$ ZSTART_LOAD = max(-MAXRADIUS, LZ_BEGIN)
+$ YEND_LOAD   = min(MAXRADIUS, LY_END)
+$ ZEND_LOAD   = min(MAXRADIUS, LZ_END)
+
+# ----------------------------------------------------------------------
+# PML parameters
+
+$ SIGMA_OPT = 0.8 * (PML_EXP + 1) * LIGHTSPEED / DY
+$ SIGMA_MAX = SIGMA_FAC * SIGMA_OPT
+
+# ----------------------------------------------------------------------
+# Run parameters
+
+# Start shifting as soon as the front of the truncated pulse nearly
+# reaches the right edge
+$ SHIFTPOS = 0.99*LX
+
+# Run for 10% longer than the plasma length
+$ SIMLENGTH = 1.1 * ENDPLASMA
+$ SIMTIME = SIMLENGTH / LIGHTSPEED
+
+# Dump a fixed number of times
+$ NDUMPS = 50
+$ DUMPTIME = SIMTIME / NDUMPS
+$ DUMP_PER = int(math.ceil(DUMPTIME / DT))
+
+$ NSTEPS = NDUMPS * DUMP_PER
+
+###################
+#                 
+# Main input file
+#
+###################
+
+# The following two variables determine the basic object
+dimension = NDIM
+floattype = double
+
+# time step, number of steps, etc.
+dt = DT
+nsteps = NSTEPS
+dumpPeriodicity = DUMP_PER
+
+# The grid
+<Grid globalGrid>
+  numCells   = [NX NY_TOT NZ_TOT]
+  lengths = [LX LY_TOT LZ_TOT]
+  startPositions = [XSTART YSTART  ZSTART]
+  maxIntDepHalfWidth = 2
+</Grid>
+
+# The decomposition (determines periodicity)
+<Decomp decomp>
+  kind = regular
+</Decomp>
+
+# Moving window
+downShiftDir = 0
+downShiftPos = SHIFTPOS
+
+#=======================================================================
+# PIC electromagnetic fields
+#=======================================================================
+
+<EmField myEmField>
+  kind = emMultiField
+  rhojweighting = esirk3rdOrder
+  interpolation = esirk3rdOrder
+
+  <Field ElecMultiField>
+    numComponents = 3
+    offset = edge
+
+# Boundary condition for launching the laser pulse, polarized in the z
+# direction
+
+    <Source pumpLauncher>
+      kind = varadd #iable # kind must be switched for proper operation
+      minDim = 1
+      lowerBounds = [1  NY_BEGIN  NZ_BEGIN]
+      upperBounds = [2  NY_END    NZ_END  ]
+      components = [2]
+      <STFunc component2>
+        kind = gaussianPulse
+        omega = OMEGA
+        k = [K_0  0.  0.]
+        vg = LIGHTSPEED
+        L_fwhm = L_FWHM
+        widths = [L_HALF  WYPUMP  WZPUMP]
+        amplitude = E_0
+        phase = 0.
+        origin = [$XSTARTPUMP$  0.0  0.0]
+        waistDisplacement = WAISTPOS
+      </STFunc>
+    </Source>
+
+    <Source pumpLauncher2>
+      kind = varadd# iable # kind must be switched for proper operation
+      minDim = 1
+      lowerBounds = [1  NY_BEGIN  NZ_BEGIN]
+      upperBounds = [2  NY_END    NZ_END  ]
+      components = [2]
+      <STFunc component2>
+        kind = gaussianPulse
+        omega = $OMEGA*1.064$
+        k = [$K_0*1.064$  0.  0.]
+        vg = LIGHTSPEED
+        L_fwhm = L_FWHM
+        widths = [L_HALF  WYPUMP  WZPUMP]
+        amplitude = $E_0*1.064$
+        phase = 0.
+        origin = [XSTARTPUMP  0.0 0.0]
+        waistDisplacement = WAISTPOS
+      </STFunc>
+    </Source>
+
+    <BoundaryCondition rightConductor>
+      lowerBounds = [NX        -1       -1]
+      upperBounds = [NX1  NY_TOT1  NZ_TOT1]
+      minDim      = 2
+      kind        = constant
+      components     = [1  2 ]   # Ey and Ez
+      amplitudes  = [0. 0.]
+    </BoundaryCondition>
+
+    <BoundaryCondition backConductor>
+      lowerBounds = [ -1   0        -1]
+      upperBounds = [NX1   1   NZ_TOT1]
+      minDim      = 2
+      kind        = constant
+      components     = [0  2 ]   # Ex and Ez
+      amplitudes  = [0. 0.]
+    </BoundaryCondition>
+
+    <BoundaryCondition frontConductor>
+      lowerBounds = [ -1   NY_TOT         -1]
+      upperBounds = [NX1   NY_TOT1   NZ_TOT1]
+      minDim      = 2
+      kind        = constant
+      components     = [0  2 ]   # Ex and Ez
+      amplitudes  = [0. 0.]
+    </BoundaryCondition>
+
+    <BoundaryCondition bottomConductor>
+      lowerBounds = [ -1       -1   0]
+      upperBounds = [NX1  NY_TOT1   1]
+      minDim      = 3
+      kind        = constant
+      components     = [0  1 ]   # Ex and Ey
+      amplitudes  = [0. 0.]
+    </BoundaryCondition>
+
+    <BoundaryCondition topConductor>
+      lowerBounds = [ -1       -1   NZ_TOT ]
+      upperBounds = [NX1  NY_TOT1   NZ_TOT1]
+      minDim      = 3
+      kind        = constant
+      components     = [0  1 ]   # Ex and Ey
+      amplitudes  = [0. 0.]
+    </BoundaryCondition>
+  </Field>
+
+  <Field MagMultiField>
+    numComponents = 3
+    offset = face
+  </Field>
+
+  externalFields = [SumRhoJ]
+
+# ----------------------------------------------------------------------
+# the updaters
+
+  <FieldMultiUpdater yeeAmpere>
+    kind = yeeAmpereUpdater
+    components = [0 1 2]
+    contractFromBottomInNonComponentDir = 1
+    lowerBounds = [0 NY_BEGIN NZ_BEGIN]
+    upperBounds = [NX NY_END NZ_ENDL]
+    readFields = [MagMultiField SumRhoJ]
+    writeFields = [ElecMultiField]
+  </FieldMultiUpdater>
+  
+  <FieldMultiUpdater yeeFaraday>
+    kind = yeeFaradayUpdater
+    components = [0 1 2]
+    expandToTopInComponentDir = 1
+    lowerBounds = [0 NY_BEGIN NZ_BEGIN]
+    upperBounds = [NX NY_END NZ_END]
+    readFields = [ElecMultiField]
+    writeFields = [MagMultiField]
+  </FieldMultiUpdater>
+  
+# ----------------------------------------------------------------------
+# PML
+
+  <PmlRegion Pml>
+    energyWritePeriod  = 1000
+    eFieldName         = ElecMultiField
+    bFieldName         = MagMultiField
+    ampereUpdaterName  = yeeAmpere
+    faradayUpdaterName = yeeFaraday
+    
+# region inside PML (corresponds to Maxwell update region)
+    <Region inner>
+      lowerBounds = [ 0   NY_BEGIN   NZ_BEGIN]
+      upperBounds = [NX   NY_END     NZ_END  ]
+    </Region>
+
+# outer bounds of PML
+    <Region outer>
+      lowerBounds = [ 0        0        0]
+      upperBounds = [NX   NY_TOT   NZ_TOT]
+    </Region>
+
+# functional form for conductivity
+    sigmaForm = SIGMA_MAX * abs(w)**PML_EXP
+  </PmlRegion>
+
+# ----------------------------------------------------------------------
+# the sequence of updates
+
+  <UpdateStep step1.0>
+    toDtFrac = 0.5
+    messageFields = [MagMultiField]
+    updaters = [yeeFaraday]
+  </UpdateStep>
+   
+  <UpdateStep step2.0>
+    toDtFrac = 1.
+    messageFields = [ElecMultiField]
+    updaters = [yeeAmpere]
+  </UpdateStep>
+   
+  <UpdateStep step3.0>
+    toDtFrac = 1.
+    messageFields = [MagMultiField]
+    updaters = [yeeFaraday]
+  </UpdateStep>
+
+</EmField>
+
+
+#=======================================================================
+# Cold, quiet PIC electrons (plasma)
+#=======================================================================
+
+<Species plasmaElectrons>
+  kind = relBorisVWTagged
+  charge = ELECCHARGE
+  mass = ELECMASS
+  emField = myEmField
+
+# Nominal density and particles per cell at that density
+  nominalDensity = NOMDENS
+  nomPtclsPerCell = PPC
+
+# Insure the tags are generated by the species so they will restore
+  overwriteTag = true
+
+# ----------------------------------------------------------------------
+# Particle source for the plasma 
+# ----------------------------------------------------------------------
+  <ParticleSource rampSrc>
+    kind = xvLoaderEmitter
+
+# This determines the interval of times for emission and loading, with
+# loading subject to the flags below.
+    applyTimes = [0. 1.]
+
+# The following variable determines whether particles are loaded into
+# the new row for a moving window.
+    loadOnShift = true
+
+# The following variable determines whether one continues to load with
+# each new time step.
+    loadAfterInit = false
+
+# The following determines how positions are defined.  This is the NEW
+# GRID LOADER...
+    <PositionGenerator gridSlab>
+      kind = gridPosGen
+
+# The following gives the slab over which particles are loaded.  If it
+# is not present or has zero volume, no particles are loaded.
+      <Slab loadSlab>
+        lowerBounds = [XSTART_LOAD YSTART_LOAD ZSTART_LOAD]
+        upperBounds = [ 1. YEND_LOAD   ZEND_LOAD]
+      </Slab>
+
+# The following (must be an integer) determines the sign of the normal
+# (For some reason, this must be present, even though we are not
+# emitting)
+      emitSign = 1
+
+# The following gives the number of macroparticles loaded per each
+# direction in a cell (on average for varying grids).  So the number
+# per cell is the product of those below.
+      macroPerDir = [PPCX PPCY PPCZ]
+    </PositionGenerator>
+
+# The following determines how velocities are chosen for loading.  The
+# 'funcVelGen' velocity generator sets the value of the velocity
+# components according to a user-specified space-time function.  In
+# this example, only component 3 is specified--which corresponds to
+# the particle weight--and the other components (0,1,2) default to 0
+# everywhere.
+    <VelocityGenerator rampVelGen>
+      kind = funcVelGen
+
+      <STFunc component0>
+        kind = expression
+        expression = gauss(VTH_E)
+      </STFunc>
+      <STFunc component1>
+        kind = expression
+        expression = gauss(VTH_E)
+      </STFunc>
+      <STFunc component2>
+        kind = expression
+        expression = gauss(VTH_E)
+      </STFunc>
+
+      <STFunc component3>
+      	kind = tagGen
+      </STFunc>
+ 
+     <STFunc component4>
+        kind = cosineFlattop
+        direction = [1. 0. 0.]
+        startPosition = STARTRAMP
+        startFlattop  = STARTFLAT
+        endFlattop    = ENDFLAT
+        endPosition   = ENDPLASMA
+        startAmplitude = 0.0
+        flattopAmplitude = 1.
+        endAmplitude   = 0.0
+      </STFunc>
+
+    </VelocityGenerator>
+  </ParticleSource>
+
+# ----------------------------------------------------------------------
+# Particle sinks at the simulation boundaries
+# ----------------------------------------------------------------------
+
+  <ParticleSink leftAbsorber>
+    kind = absorber
+    minDim = 1
+    lowerBounds = [-1       -1       -1]
+    upperBounds = [ 0  NY_TOT1  NZ_TOT1]
+  </ParticleSink>
+
+  <ParticleSink rightAbsorber>
+    kind = absorber
+    minDim = 1
+    lowerBounds = [NX        -1       -1]
+    upperBounds = [NX1  NY_TOT1  NZ_TOT1]
+  </ParticleSink>
+
+  <ParticleSink frontAbsorber>
+    kind = absorber
+    minDim = 2
+    lowerBounds = [ 0  -1       -1]
+    upperBounds = [NX   0  NZ_TOT1]
+  </ParticleSink>
+
+  <ParticleSink backAbsorber>
+    kind = absorber
+    minDim = 2
+    lowerBounds = [ 0  NY_TOT        -1]
+    upperBounds = [NX  NY_TOT1  NZ_TOT1]
+  </ParticleSink>
+
+  <ParticleSink bottomAbsorber>
+    kind = absorber
+    minDim = 3
+    lowerBounds = [ 0       0  -1]
+    upperBounds = [NX  NY_TOT   0]
+  </ParticleSink>
+
+  <ParticleSink topAbsorber>
+    kind = absorber
+    minDim = 3
+    lowerBounds = [ 0       0  NZ_TOT ]
+    upperBounds = [NX  NY_TOT  NZ_TOT1]
+  </ParticleSink>
+
+</Species>
