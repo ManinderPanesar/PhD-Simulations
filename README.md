@@ -1,7 +1,7 @@
 # PhD-Simulations
 ## Vorpal Data Analyzer
 
-This repository contains the example of simulations carried out during my PhD. My thesis entitled _Numerical Simulations on high-intensity laser-plasma interaction_.I was working on laser plasma acclerators thorey and simulations. I was using software VORPAL Version 5.2 (now called VSIM) by Tech-X Corportations, specifically designed to carry out laser plasma accleration simulation.
+This repository contains the example of simulations carried out during my PhD. My thesis entitled _Numerical Simulations on high-intensity laser-plasma interaction_.I was working on laser plasma acclerators theory and simulations. I was using software VORPAL Version 5.2 (now called VSIM) by Tech-X Corportations, specifically designed to carry out laser plasma accleration simulation.
 
 The algorithm of the simulation was based on Particle-in-cell(PIC) method. The input file to modify the parameters and functions to be used while simulations was saved as an extension _.pre_. This pre file is processed by Vorpal to calculate all the values derived from pre file in an .in file that is fetched to Vorpal simulation software. 
 
